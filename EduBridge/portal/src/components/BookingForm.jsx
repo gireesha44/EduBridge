@@ -1,18 +1,39 @@
 import React, { useState } from 'react';
 import { usePortal } from '../context/PortalContext';
 import { CheckCircle, AlertTriangle } from 'lucide-react';
+import { generateSessionPlan } from '../services/aiService';
 
 const BookingForm = ({ student, onComplete }) => {
   const { bookSession, availability, mentor } = usePortal();
   const [formData, setFormData] = useState({
-    subject: student.weak_subjects[0] || mentor.subjects[0] || '',
+    subject: student.weak_subjects?.[0] || mentor.subjects?.[0] || '',
+    topic: '',
+    activities: '',
     date: '',
     time: '',
     place: ''
   });
 
+  const [loadingAi, setLoadingAi] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState(false);
+
+  const handleAiFill = async () => {
+     setLoadingAi(true);
+     try {
+        const plan = await generateSessionPlan(student);
+        if (plan) {
+            setFormData(prev => ({
+               ...prev,
+               topic: plan.topic,
+               activities: plan.activities.join('\n')
+            }));
+        }
+     } catch (e) {
+        console.error(e);
+     }
+     setLoadingAi(false);
+  };
 
   // Available dates based on mentor's set availability map
   const availableDates = Object.keys(availability).filter(d => availability[d].length > 0);
@@ -27,6 +48,8 @@ const BookingForm = ({ student, onComplete }) => {
       bookSession({
         student_id: student.id,
         subject: formData.subject,
+        topic: formData.topic,
+        activities: formData.activities,
         date: formData.date,
         time: formData.time,
         place: formData.place
@@ -58,13 +81,25 @@ const BookingForm = ({ student, onComplete }) => {
         </div>
       )}
 
+      <div className="flex-between" style={{ marginBottom: '1.5rem', borderBottom: '1px solid var(--border)', paddingBottom: '1rem' }}>
+         <h4 style={{ margin: 0, color: 'var(--text-main)' }}>Session Details</h4>
+         <button type="button" onClick={handleAiFill} disabled={loadingAi} className="btn btn-sm" style={{ background: '#FDF4FF', color: '#C026D3', border: '1px solid #F5D0FE', boxShadow: '0 1px 2px rgba(192,38,211,0.1)' }}>
+            {loadingAi ? 'Generating...' : '🪄 Auto-Fill Details via AI'}
+         </button>
+      </div>
+
       <div className="form-group">
         <label className="form-label">Focus Subject</label>
         <select className="form-select" value={formData.subject} onChange={e => setFormData({...formData, subject: e.target.value})} required>
            <option value="" disabled>Select a subject</option>
-           {mentor.subjects.map(s => <option key={s} value={s}>{s}</option>)}
+           {mentor.subjects?.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        <small style={{ color: 'var(--text-muted)' }}>Student's weak topics: {student.weak_subjects.join(', ')}</small>
+        <small style={{ color: 'var(--text-muted)' }}>Student's weak topics: {student.weak_subjects?.join(', ')}</small>
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">Specific Topic</label>
+        <input type="text" className="form-input" value={formData.topic} onChange={e => setFormData({...formData, topic: e.target.value})} placeholder="e.g. Basic Fractions" />
       </div>
 
       <div className="grid-2">
@@ -83,6 +118,11 @@ const BookingForm = ({ student, onComplete }) => {
             {availableTimes.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">Planned Activities</label>
+        <textarea className="form-input" value={formData.activities} onChange={e => setFormData({...formData, activities: e.target.value})} placeholder="1. Teach theory... 2. Practice interactive... 3. Short quiz" rows={3}></textarea>
       </div>
 
       <div className="form-group">

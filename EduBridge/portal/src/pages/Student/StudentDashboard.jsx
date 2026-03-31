@@ -5,6 +5,7 @@ import { LogOut, BookOpen, Clock, Target, Calendar, Award, Activity, Star, Alert
 import { useNavigate } from 'react-router-dom';
 import { db } from '../../firebase';
 import { doc, getDoc, collection, query, where, onSnapshot, addDoc } from 'firebase/firestore';
+import { generateQuiz } from '../../services/aiService';
 
 const StudentDashboard = () => {
   const { currentUser, logout } = useAuth();
@@ -22,6 +23,7 @@ const StudentDashboard = () => {
   const [sessions, setSessions] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [studentData, setStudentData] = useState(null);
+  const [doubts, setDoubts] = useState([]);
 
   const [showQuiz, setShowQuiz] = useState(false);
   const [dailyQuizCompleted, setDailyQuizCompleted] = useState(false);
@@ -72,7 +74,14 @@ const StudentDashboard = () => {
       setDailyQuizCompleted(!snapshot.empty);
     });
 
-    return () => { unsubStudent(); unsubSessions(); unsubAssignments(); unsubLogs(); unsubAttempt(); };
+    const qDoubts = query(collection(db, 'doubts'), where('student_id', '==', currentUser.uid));
+    const unsubDoubts = onSnapshot(qDoubts, (snapshot) => {
+      const dbts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      dbts.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+      setDoubts(dbts);
+    });
+
+    return () => { unsubStudent(); unsubSessions(); unsubAssignments(); unsubLogs(); unsubAttempt(); unsubDoubts(); };
   }, [currentUser]);
 
   const handleLogout = async () => {
@@ -81,11 +90,35 @@ const StudentDashboard = () => {
   };
 
   const handleOpenQuiz = async () => {
-     if (dailyQuizCompleted) return;
+     if (dailyQuizCompleted || !studentData) return;
      setQuizLoading(true);
      setShowQuiz(true);
-     const questions = await fetchQuizQuestions(currentUser.uid);
-     setQuizQuestions(questions);
+     
+     try {
+       const targetSubject = (studentData.weakSubjects && studentData.weakSubjects.length > 0) ? studentData.weakSubjects[0] : 'General Knowledge';
+       const targetClass = studentData.classLevel || studentData.class || 'High School';
+       
+       let questions = await generateQuiz(targetSubject, "intermediate", targetClass);
+       
+       // Fallback to Firestore seed data if AI generation fails or is offline
+       if (!questions || questions.length === 0) {
+          questions = await fetchQuizQuestions(currentUser.uid);
+       }
+       
+       // Ensure formatting matches UI expectations
+       const formatted = questions.map((q, idx) => ({ 
+          id: q.id || `ai_q_${Date.now()}_${idx}`, 
+          subject: targetSubject, 
+          question: q.question,
+          options: q.options || [],
+          correctAnswer: q.correctAnswer
+       }));
+       
+       setQuizQuestions(formatted);
+     } catch(e) {
+       console.error("Quiz Gen Error:", e);
+     }
+
      setUserAnswers({});
      setQuizSubmitted(false);
      setQuizLoading(false);
@@ -562,6 +595,27 @@ const StudentDashboard = () => {
                    <textarea className="form-input" rows="3" placeholder="Describe your doubt here..." value={doubtText} onChange={e => setDoubtText(e.target.value)} required style={{ resize: 'none' }}></textarea>
                    <button type="submit" className="btn btn-primary hover-scale" style={{ width: '100%', marginTop: '0.5rem' }}>Send to Mentor</button>
                 </form>
+                
+                {doubts.length > 0 && (
+                   <div style={{ marginTop: '1.5rem' }}>
+                      <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', color: 'var(--text-muted)' }}>My Previous Doubts</h4>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                         {doubts.map(d => (
+                            <div key={d.id} className="animate-fade-in" style={{ padding: '0.75rem', background: '#F9FAFB', border: '1px solid var(--border)', borderRadius: '6px', borderLeft: d.status === 'resolved' ? '3px solid #10B981' : '3px solid #F59E0B' }}>
+                               <span className="tag" style={{ background: d.status === 'resolved' ? '#D1FAE5' : '#FEF3C7', color: d.status === 'resolved' ? '#047857' : '#B45309', fontSize: '0.7rem', padding: '0.2rem 0.5rem', marginBottom: '0.5rem', display: 'inline-block' }}>
+                                  {d.status === 'resolved' ? 'Answered' : 'Pending'}
+                               </span>
+                               <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', fontWeight: 500 }}>"{d.text}"</p>
+                               {d.answer && (
+                                  <div style={{ background: '#ECFDF5', padding: '0.75rem', borderRadius: '4px', border: '1px dashed #34D399' }}>
+                                     <p style={{ margin: 0, fontSize: '0.85rem', color: '#065F46' }}><span style={{ fontWeight: 600 }}>Mentor's Answer:</span> {d.answer}</p>
+                                  </div>
+                               )}
+                            </div>
+                         ))}
+                      </div>
+                   </div>
+                )}
              </div>
            </div>
         </div>

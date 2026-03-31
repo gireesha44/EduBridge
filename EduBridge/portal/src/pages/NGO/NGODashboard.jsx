@@ -4,6 +4,7 @@ import { LogOut, BookOpen, Users, Link as LinkIcon, AlertCircle, AlertTriangle, 
 import { useNavigate } from 'react-router-dom';
 import { db } from '../../firebase';
 import { collection, query, where, onSnapshot, doc, updateDoc, arrayUnion, addDoc, deleteDoc } from 'firebase/firestore';
+import { evaluatePerformance } from '../../services/aiService';
 
 const NGODashboard = () => {
   const { currentUser, logout } = useAuth();
@@ -127,10 +128,13 @@ const NGODashboard = () => {
                  
                  if (candidateMentors.length > 0) {
                      const newMentor = candidateMentors[0];
+                     const aiEval = await evaluatePerformance(s);
+                     const trend = aiEval?.improvementTrend || "stagnant";
+                     const riskFormat = aiEval?.riskLevel || "medium";
                      
                      await updateDoc(doc(db, "students", s.id), { 
                          assignedMentorId: newMentor.id,
-                         reassignmentReason: "No improvement in last 14 days",
+                         reassignmentReason: `AI Assessed: ${riskFormat.toUpperCase()} risk, ${trend} trend.`,
                          matchingReason: ["subject", "performance", "availability"]
                      });
                      
@@ -271,27 +275,37 @@ const NGODashboard = () => {
         </div>
 
         {/* Smart Alert Panel */}
-        <div className="grid-3" style={{ marginBottom: '2rem', gap: '1.5rem' }}>
-          <div className="glass-card flex-between hover-scale" style={{ padding: '1.5rem', borderLeft: '4px solid var(--danger)' }}>
-             <div>
+        <div className="grid-3" style={{ marginBottom: '2rem', gap: '1.5rem', alignItems: 'stretch' }}>
+          <div className="glass-card flex-between hover-scale" style={{ padding: '1.5rem', borderLeft: '4px solid var(--danger)', alignItems: 'flex-start' }}>
+             <div style={{ flex: 1 }}>
                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Students At Risk</p>
                <h2 style={{ margin: '0.25rem 0 0 0', color: 'var(--danger)' }}>{atRiskStudents.length}</h2>
              </div>
-             <AlertTriangle size={32} color="var(--danger)" opacity={0.8} />
+             <AlertTriangle size={32} color="var(--danger)" opacity={0.8} style={{ flexShrink: 0 }} />
           </div>
-          <div className="glass-card flex-between hover-scale" style={{ padding: '1.5rem', borderLeft: '4px solid var(--warning)' }}>
-             <div>
+          <div className="glass-card flex-between hover-scale" style={{ padding: '1.5rem', borderLeft: '4px solid var(--warning)', alignItems: 'flex-start' }}>
+             <div style={{ flex: 1 }}>
                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Inactive Mentors</p>
                <h2 style={{ margin: '0.25rem 0 0 0', color: 'var(--warning)' }}>{inactiveMentors.length}</h2>
+               {inactiveMentors.length > 0 && (
+                   <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+                     {inactiveMentors.map(m => m.name).join(', ')}
+                   </p>
+               )}
              </div>
-             <Users size={32} color="var(--warning)" opacity={0.8} />
+             <Users size={32} color="var(--warning)" opacity={0.8} style={{ flexShrink: 0 }} />
           </div>
-          <div className="glass-card flex-between hover-scale" style={{ padding: '1.5rem', borderLeft: '4px solid #9333ea' }}>
-             <div>
+          <div className="glass-card flex-between hover-scale" style={{ padding: '1.5rem', borderLeft: '4px solid #9333ea', alignItems: 'flex-start' }}>
+             <div style={{ flex: 1 }}>
                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Low Performance Mentors</p>
                <h2 style={{ margin: '0.25rem 0 0 0', color: '#9333ea' }}>{lowPerformanceMentors.length}</h2>
+               {lowPerformanceMentors.length > 0 && (
+                   <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+                     {lowPerformanceMentors.map(m => m.name).join(', ')}
+                   </p>
+               )}
              </div>
-             <AlertCircle size={32} color="#9333ea" opacity={0.8} />
+             <AlertCircle size={32} color="#9333ea" opacity={0.8} style={{ flexShrink: 0 }} />
           </div>
         </div>
 

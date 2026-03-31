@@ -7,6 +7,7 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, collection, query, where, getDocs, updateDoc, deleteDoc, arrayUnion } from 'firebase/firestore';
 import { auth, db } from '../firebase';
+import { suggestMentor } from '../services/aiService';
 
 const AuthContext = createContext();
 
@@ -144,36 +145,26 @@ export const AuthProvider = ({ children }) => {
              await deleteDoc(doc(db, "pendingMentors", pendingMentorDoc.id));
           }
         } else if (role === 'Student') {
-          // --- AUTO-ASSIGN ENGINE ---
+          // --- AUTO-ASSIGN ENGINE VIA AI ---
           let assignedMentorId = null;
           let matchingReason = null;
           if (additionalData.weakSubjects && additionalData.weakSubjects.length > 0) {
             const mSnap = await getDocs(collection(db, "mentors"));
-            let matchingMentors = [];
+            let allMentors = [];
             mSnap.forEach(mDoc => {
-               const mentor = { id: mDoc.id, ...mDoc.data() };
-               const mSubjects = mentor.subjects || mentor.expertise || [];
-               if (mSubjects.some(sub => additionalData.weakSubjects.includes(sub))) {
-                  matchingMentors.push(mentor);
-               }
+               allMentors.push({ id: mDoc.id, ...mDoc.data() });
             });
             
-            if (matchingMentors.length > 0) {
-               // Sort by performanceScore DESC, then assigned load
-               matchingMentors.sort((a, b) => {
-                 if ((b.performanceScore || 0) !== (a.performanceScore || 0)) {
-                    return (b.performanceScore || 0) - (a.performanceScore || 0);
-                 }
-                 return (a.assignedStudents?.length || 0) - (b.assignedStudents?.length || 0);
-               });
+            if (allMentors.length > 0) {
+               const stPayload = { ...additionalData, classLevel: additionalData.classLevel || 'Class 10' };
+               assignedMentorId = await suggestMentor(stPayload, allMentors);
                
-               const chosenMentor = matchingMentors[0];
-               assignedMentorId = chosenMentor.id;
-               matchingReason = ["subject", "performance", "availability"];
-               
-               await updateDoc(doc(db, "mentors", chosenMentor.id), {
-                 assignedStudents: arrayUnion(user.uid)
-               });
+               if (assignedMentorId) {
+                 matchingReason = ["AI Intelligent Match", "subject", "performance", "availability"];
+                 await updateDoc(doc(db, "mentors", assignedMentorId), {
+                   assignedStudents: arrayUnion(user.uid)
+                 });
+               }
             }
           }
 

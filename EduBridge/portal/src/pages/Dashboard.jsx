@@ -5,11 +5,15 @@ import SessionCard from '../components/SessionCard';
 import { TrendingUp, Users, CalendarCheck, AlertCircle, Signal, Flame, MessageCircle, FileWarning } from 'lucide-react';
 
 const Dashboard = () => {
-  const { mentor, students, sessions, createAssignment, assignments = [], doubts = [] } = usePortal();
+  const { mentor, students, sessions, createAssignment, assignments = [], doubts = [], answerDoubt } = usePortal();
 
   const [filterRisk, setFilterRisk] = useState('All'); // All, Active, At Risk
   const [sortParam, setSortParam] = useState('Default'); // Default, Streak, Activity
   
+  const [replyDoubtId, setReplyDoubtId] = useState(null);
+  const [replyText, setReplyText] = useState('');
+  const [submittedMsgId, setSubmittedMsgId] = useState(null);
+
   const [showAssignForm, setShowAssignForm] = useState(false);
   const [assignForm, setAssignForm] = useState({ title: '', description: '', studentId: '', dueDate: '' });
 
@@ -30,6 +34,22 @@ const Dashboard = () => {
     setShowAssignForm(false);
   };
 
+  const handleReplyDoubt = async (doubtId) => {
+     if (!replyText.trim()) return;
+     try {
+         await answerDoubt(doubtId, replyText);
+         setSubmittedMsgId(doubtId);
+         setTimeout(() => {
+             setSubmittedMsgId(null);
+             setReplyDoubtId(null);
+             setReplyText('');
+         }, 2000);
+     } catch (err) {
+         console.error("Error answering doubt:", err);
+         alert(`Error: ${err.message}\n\nPlease hit 'Refresh' or 'F5' on your browser to sync the latest AI Context!`);
+     }
+  };
+
   const pendingAsg = assignments.filter(a => a.status === 'pending');
   const completedAsg = assignments.filter(a => a.status === 'completed');
 
@@ -41,7 +61,7 @@ const Dashboard = () => {
   
   const atRiskStudents = students.filter(s => {
     const weeklyCount = s.activityLog?.slice(-7).filter(x => x > 0).length || 0;
-    return s.streak === 0 || s.missedSessions >= 2 || weeklyCount === 0;
+    return s.streak === 0 || s.missedSessions >= 2 || weeklyCount === 0 || s.aiAlert;
   });
 
   const avgStreak = students.length ? Math.round(students.reduce((acc, s) => acc + (s.streak || 0), 0) / students.length) : 0;
@@ -80,7 +100,7 @@ const Dashboard = () => {
      return dt < new Date();
   });
   
-  const unresolvedDoubts = doubts.filter(d => d.status === 'open');
+  const unresolvedDoubts = doubts.filter(d => d.status === 'open' || d.id === submittedMsgId);
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
@@ -263,9 +283,14 @@ const Dashboard = () => {
                   <div key={student.id} className="glass-card" style={{ borderLeft: '4px solid var(--danger)', padding: '1rem' }}>
                     <div className="flex-between">
                       <h4 style={{ margin: 0, fontWeight: 600 }}>{student.name} ({student.class})</h4>
-                      <span className="tag" style={{ background: '#FEE2E2', color: '#991B1B' }}>{student.missedSessions} Missed</span>
+                      <span className="tag" style={{ background: '#FEE2E2', color: '#991B1B' }}>Risk Alert</span>
                     </div>
-                    <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem' }}>Student has missed {student.missedSessions} sessions. Please reach out or coordinate an intervention.</p>
+                    {student.aiAlert && (
+                       <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: '#7F1D1D', fontWeight: 600, background: '#FEF2F2', padding: '0.5rem', borderRadius: '4px' }}>{student.aiAlert}</p>
+                    )}
+                    {student.missedSessions >= 2 && (
+                       <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem' }}>Student has missed {student.missedSessions} sessions. Please reach out or coordinate an intervention.</p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -298,7 +323,23 @@ const Dashboard = () => {
                         return (
                            <div key={d.id} className="glass-card" style={{ padding: '0.75rem', borderLeft: '3px solid var(--accent)' }}>
                                <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{sName} asks:</span>
-                               <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.9rem', color: 'var(--text-muted)' }}>"{d.text}"</p>
+                               <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.9rem', color: 'var(--text-main)' }}>"{d.text}"</p>
+                               
+                               {submittedMsgId === d.id ? (
+                                   <div className="animate-fade-in" style={{ marginTop: '0.75rem', color: '#10B981', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                      ✅ Submitted successfully! 
+                                   </div>
+                               ) : replyDoubtId === d.id ? (
+                                   <div className="animate-fade-in" style={{ marginTop: '0.75rem' }}>
+                                       <textarea className="form-input" rows="2" placeholder="Write your exact answer here..." value={replyText} onChange={e => setReplyText(e.target.value)} style={{ padding: '0.5rem', width: '100%', fontSize: '0.85rem' }}></textarea>
+                                       <div className="flex-between" style={{ marginTop: '0.5rem' }}>
+                                          <button className="btn" style={{ background: '#F3F4F6', fontSize: '0.8rem', padding: '0.3rem 0.6rem' }} onClick={() => setReplyDoubtId(null)}>Cancel</button>
+                                          <button className="btn btn-primary" style={{ fontSize: '0.8rem', padding: '0.3rem 0.6rem' }} onClick={() => handleReplyDoubt(d.id)}>Submit Answer</button>
+                                       </div>
+                                   </div>
+                               ) : (
+                                   <button className="btn btn-secondary hover-scale" style={{ marginTop: '0.5rem', fontSize: '0.75rem', padding: '0.2rem 0.6rem' }} onClick={() => setReplyDoubtId(d.id)}>Quick Reply</button>
+                               )}
                            </div>
                         )
                      })}

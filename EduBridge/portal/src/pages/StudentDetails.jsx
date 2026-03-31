@@ -6,6 +6,7 @@ import BookingForm from '../components/BookingForm';
 import SessionCard from '../components/SessionCard';
 import { db } from '../firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
+import { analyzeStudent, generateStudyPlan } from '../services/aiService';
 import { useEffect } from 'react';
 
 const StudentDetails = () => {
@@ -20,6 +21,28 @@ const StudentDetails = () => {
   const [showBooking, setShowBooking] = useState(false);
   const [lessonPlan, setLessonPlan] = useState(null);
   const [offlineMode, setOfflineMode] = useState(false);
+  const [aiAnalysis, setAiAnalysis] = useState(null);
+  const [aiStudyPlan, setAiStudyPlan] = useState(null);
+  const [loadingAi, setLoadingAi] = useState(false);
+
+  const handleGenerateAiPlan = async () => {
+    setLoadingAi(true);
+    try {
+      const analysis = await analyzeStudent(student);
+      setAiAnalysis(analysis);
+      
+      const plan = await generateStudyPlan(
+         analysis.weakTopics?.[0] || student.weak_subjects?.[0] || 'General',
+         analysis.level,
+         student.class
+      );
+      setAiStudyPlan(plan);
+    } catch (e) {
+      console.error(e);
+      alert("AI generation failed or timed out. Please try again later.");
+    }
+    setLoadingAi(false);
+  };
 
   useEffect(() => {
     if (!student) return;
@@ -175,6 +198,49 @@ const StudentDetails = () => {
                </div>
             ) : (
                <p style={{ fontSize: '0.9rem', fontStyle: 'italic', color: 'var(--text-muted)' }}>No daily reflections submitted yet.</p>
+            )}
+          </div>
+
+          <div className="glass-card" style={{ background: 'linear-gradient(135deg, #FDF4FF 0%, #FAE8FF 100%)', borderLeft: '4px solid #D946EF' }}>
+            <h2 className="flex-center gap-2" style={{ justifyContent: 'flex-start', margin: 0, color: '#A21CAF' }}><Award size={20}/> Gemini AI Intelligence</h2>
+            
+            {!aiAnalysis && !loadingAi && (
+               <div style={{ marginTop: '1rem' }}>
+                  <p style={{ margin: '0 0 1rem 0', color: '#86198F', fontSize: '0.9rem' }}>Leverage Gemini AI to analyze {student.name}'s trajectory and generate a custom adaptive action plan.</p>
+                  <button className="btn" style={{ background: '#C026D3', color: 'white', border: 'none', boxShadow: '0 4px 6px -1px rgba(192, 38, 211, 0.4)' }} onClick={handleGenerateAiPlan}>✨ Generate Intelligence Report</button>
+               </div>
+            )}
+            {loadingAi && (
+               <div className="flex-center" style={{ marginTop: '1rem', color: '#86198F', fontSize: '0.9rem', padding: '1.rem' }}>
+                  <Activity size={18} className="animate-spin" style={{ marginRight: '0.5rem' }}/> Running deep semantic analysis...
+               </div>
+            )}
+            {aiAnalysis && !loadingAi && (
+               <div className="animate-fade-in" style={{ marginTop: '1rem' }}>
+                  <div className="flex-between" style={{ background: 'white', padding: '1rem', borderRadius: '8px', border: '1px solid #F5D0FE', marginBottom: '1rem' }}>
+                     <div>
+                       <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#86198F', fontWeight: 600 }}>Detected Cognitive Level</span>
+                       <h3 style={{ margin: 0, color: '#A21CAF', textTransform: 'capitalize' }}>{aiAnalysis.level}</h3>
+                     </div>
+                     <span className="tag" style={{ background: '#FDF4FF', color: '#C026D3', border: '1px solid #F5D0FE' }}>Target: {aiAnalysis.weakTopics?.[0]}</span>
+                  </div>
+                  <p style={{ fontSize: '0.9rem', color: '#86198F', fontStyle: 'italic', background: 'white', padding: '1rem', borderRadius: '8px', border: '1px solid #F5D0FE' }}>
+                     "{aiAnalysis.recommendations}"
+                  </p>
+                  {aiStudyPlan && (
+                     <div style={{ marginTop: '1rem' }}>
+                        <h4 style={{ margin: '0 0 0.5rem 0', color: '#A21CAF' }}>AI Suggested Action Plan</h4>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                           {aiStudyPlan.map((step, idx) => (
+                             <div key={idx} style={{ background: 'white', padding: '0.75rem 1rem', borderRadius: '8px', border: '1px solid #F5D0FE' }}>
+                                <strong style={{ color: '#C026D3', fontSize: '0.85rem' }}>Step {idx + 1}: {step.topic}</strong>
+                                <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: '#4B5563' }}>{step.plan}</p>
+                             </div>
+                           ))}
+                        </div>
+                     </div>
+                  )}
+               </div>
             )}
           </div>
 

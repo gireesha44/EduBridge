@@ -81,6 +81,7 @@ export const PortalProvider = ({ children }) => {
           points: sData.progress?.points || 0,
           missedSessions: sData.progress?.missedSessions || 0,
           overall_performance: sData.progress?.overall_performance || "New student.",
+          aiAlert: sData.aiAlert || null,
           streak: sData.progress?.streak || 0,
           activityLog: sData.progress?.activityLog || Array.from({ length: 14 }, () => 0),
           lastActiveDate: sData.progress?.lastActiveDate || "Never"
@@ -389,6 +390,15 @@ export const PortalProvider = ({ children }) => {
       let actLog = data.progress?.activityLog ? [...data.progress.activityLog] : Array.from({length:14}, ()=>0);
       actLog[actLog.length - 1] += 2;
 
+      let performanceText = `Recently scored ${score}% on practice quiz.`;
+      let aiAlertStr = data.aiAlert || null; // preserve existing alert
+      if (score < 50) {
+         aiAlertStr = `AI Alert: Practice failed (${score}%). Required intervention.`;
+      } else if (score >= 70) {
+         aiAlertStr = null; // clear alert if they do well!
+         performanceText += " Great improvement!";
+      }
+
       await updateDoc(studentRef, {
         "progress.quizScores": newScores,
         "progressHistory": newHistory,
@@ -398,7 +408,8 @@ export const PortalProvider = ({ children }) => {
         "progress.studyTime": studyTime,
         "progress.learningPath": currentPath,
         "progress.activityLog": actLog,
-        "progress.overall_performance": `Recently scored ${score}% on practice quiz.`
+        "progress.overall_performance": performanceText,
+        "aiAlert": aiAlertStr
       });
 
       const uSnap = await getDoc(doc(db, "users", studentId));
@@ -420,6 +431,17 @@ export const PortalProvider = ({ children }) => {
       timestamp: new Date().toISOString()
     });
     showToast(`✉️ Doubt submitted to mentor smoothly.`);
+  };
+
+  const answerDoubt = async (doubtId, answerText) => {
+    if (!currentUser) return;
+    const doubtRef = doc(db, "doubts", doubtId);
+    await updateDoc(doubtRef, {
+       status: 'resolved',
+       answer: answerText,
+       answeredAt: new Date().toISOString()
+    });
+    showToast(`✅ Doubt resolved and answered!`);
   };
 
   const addStudentReport = async (studentId, reportText, sessionId) => {
@@ -544,6 +566,7 @@ export const PortalProvider = ({ children }) => {
     fetchQuizQuestions,
     addStudentReport,
     addDoubt,
+    answerDoubt,
     createAssignment,
     submitAssignment,
     submitDailyLog,

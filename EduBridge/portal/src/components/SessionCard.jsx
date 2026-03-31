@@ -57,6 +57,15 @@ const SessionCard = ({ session, studentName, variant = "dashboard" }) => {
           </p>
         )}
 
+        {session.topic && (
+           <div style={{ marginTop: '0.75rem', background: '#FDF4FF', padding: '0.75rem', borderRadius: '6px', border: '1px solid #F5D0FE' }}>
+              <p style={{ margin: '0 0 0.5rem 0', fontWeight: 600, color: '#C026D3', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>✨ AI Scheduled Topic: {session.topic}</p>
+              {session.activities && (
+                 <p style={{ margin: 0, fontSize: '0.85rem', color: '#86198F', whiteSpace: 'pre-line' }}>{session.activities}</p>
+              )}
+           </div>
+        )}
+
         {showStudents && (
           <div className="animate-fade-in" style={{ marginTop: '1rem', background: '#F9FAFB', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
             <p style={{ margin: 0, fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.5rem', color: 'var(--primary)' }}>Enrolled Students</p>
