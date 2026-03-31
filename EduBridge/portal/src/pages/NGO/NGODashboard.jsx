@@ -4,7 +4,7 @@ import { LogOut, BookOpen, Users, Link as LinkIcon, AlertCircle, AlertTriangle, 
 import { useNavigate } from 'react-router-dom';
 import { db } from '../../firebase';
 import { collection, query, where, onSnapshot, doc, updateDoc, arrayUnion, addDoc, deleteDoc } from 'firebase/firestore';
-import { evaluatePerformance } from '../../services/aiService';
+import { evaluatePerformance, suggestMentor } from '../../services/aiService';
 
 const NGODashboard = () => {
   const { currentUser, logout } = useAuth();
@@ -19,6 +19,7 @@ const NGODashboard = () => {
   const [showAddMentor, setShowAddMentor] = useState(false);
   const [mentorForm, setMentorForm] = useState({ name: '', email: '', subjects: '' });
   const [reassignmentAlerts, setReassignmentAlerts] = useState([]);
+  const [isMatching, setIsMatching] = useState(false);
 
   // Form State (Assignments now handled automatically during Signup)
 
@@ -91,6 +92,48 @@ const NGODashboard = () => {
       navigate('/login');
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleGlobalMatch = async () => {
+    setIsMatching(true);
+    let matchedCount = 0;
+    try {
+      const activeUnassigned = mappedStudents.filter(s => {
+         const mId = s.stats?.assignedMentorId;
+         return !mId || !mentors.find(m => m.id === mId);
+      });
+      if (activeUnassigned.length === 0) {
+        alert("All existing students already have active mentors!");
+        setIsMatching(false);
+        return;
+      }
+
+      for (const s of activeUnassigned) {
+         const stPayload = { ...s.stats, classLevel: s.stats?.classLevel || 'Class 10' };
+         // Filter out full mentors (max capacity 5)
+         const availableCapacityMentors = mentors.filter(m => (m.assignedStudents?.length || 0) < 5);
+         if (availableCapacityMentors.length === 0) break; 
+
+         const assignedId = await suggestMentor(stPayload, availableCapacityMentors);
+         
+         if (assignedId) {
+            await updateDoc(doc(db, "students", s.id), {
+               assignedMentorId: assignedId,
+               matchingReason: ["Batch API match", "subject required"]
+            });
+            await updateDoc(doc(db, "mentors", assignedId), {
+               assignedStudents: arrayUnion(s.id)
+            });
+            matchedCount++;
+         }
+      }
+      alert(`Success! Automatically assigned ${matchedCount} existing student(s).`);
+    } catch (err) {
+      console.error(err);
+      alert("Error during global matching.");
+    } finally {
+      setIsMatching(false);
     }
   };
 
@@ -430,7 +473,7 @@ const NGODashboard = () => {
                     <td style={{ padding: '0.75rem 0.5rem', fontWeight: 500 }}>{m.name} <br/><span style={{fontSize:'0.75rem', color: 'var(--text-muted)'}}>{m.email}</span></td>
                     <td style={{ padding: '0.75rem 0.5rem' }}><span className="tag success">Active</span></td>
                     <td style={{ padding: '0.75rem 0.5rem' }}>
-                       Students: {m.assignedStudents?.length || 0}
+                       {(m.assignedStudents?.length || 0) === 0 ? <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>No students assigned</span> : `Students: ${m.assignedStudents.length}`}
                        {mAtRisk > 0 && <><br/><span style={{ fontSize: '0.75rem', color: 'var(--danger)' }}>At Risk: {mAtRisk}</span></>}
                     </td>
                     <td style={{ padding: '0.75rem 0.5rem' }}>{m.completedSessions || 0}</td>
@@ -447,7 +490,12 @@ const NGODashboard = () => {
 
           {/* Student Progress Monitoring */}
           <div className="glass-card" style={{ overflowX: 'auto', gridColumn: '1 / -1', marginTop: '1rem' }}>
-            <h3 className="flex-center gap-2" style={{ marginBottom: '1.5rem', justifyContent: 'flex-start' }}><BookOpen size={20} color="var(--secondary)"/> Systematic Student Monitoring</h3>
+            <div className="flex-between" style={{ marginBottom: '1.5rem' }}>
+               <h3 className="flex-center gap-2" style={{ margin: 0 }}><BookOpen size={20} color="var(--secondary)"/> Systematic Student Monitoring</h3>
+               <button className="btn btn-secondary btn-sm" onClick={handleGlobalMatch} disabled={isMatching}>
+                 {isMatching ? 'Matching...' : '🧠 Run Global AI Match'}
+               </button>
+            </div>
             <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--text-muted)' }}>
@@ -530,7 +578,7 @@ const NGODashboard = () => {
                   <td style={{ padding: '0.75rem 0.5rem', fontWeight: 600, color: idx < 3 ? 'var(--accent)' : 'var(--text-main)' }}>{badge}#{idx + 1}</td>
                   <td style={{ padding: '0.75rem 0.5rem', fontWeight: 500 }}>{m.name}</td>
                   <td style={{ padding: '0.75rem 0.5rem' }}>
-                     Students: {m.assignedStudents?.length || 0}
+                     {(m.assignedStudents?.length || 0) === 0 ? <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>No students assigned</span> : `Students: ${m.assignedStudents.length}`}
                      {mAtRisk > 0 && <><br/><span style={{ fontSize: '0.75rem', color: 'var(--danger)' }}>At Risk: {mAtRisk}</span></>}
                   </td>
                   <td style={{ padding: '0.75rem 0.5rem' }}>{m.completedSessions || 0}</td>

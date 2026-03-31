@@ -130,11 +130,39 @@ export const AuthProvider = ({ children }) => {
         // Initialize specific role collections based on requirement
         if (role === 'Mentor') {
           const mData = pendingMentorDoc ? pendingMentorDoc.data() : { subjects: [] };
+          const mentorSubjects = mData.subjects || [];
+          
+          let newlyAssignedStudents = [];
+          
+          // ---- NEW AUTO-ASSIGN SWEEP FOR UNASSIGNED STUDENTS ----
+          try {
+             const sSnap = await getDocs(collection(db, "students"));
+             const unassignedStudents = sSnap.docs.filter(d => !d.data().assignedMentorId);
+
+             for (let sDoc of unassignedStudents) {
+                if (newlyAssignedStudents.length >= 5) break; // capacity limit
+                
+                const sData = sDoc.data();
+                const sSubj = sData.weakSubjects && sData.weakSubjects.length > 0 ? sData.weakSubjects[0] : null;
+                
+                if (sSubj && mentorSubjects.includes(sSubj)) {
+                   newlyAssignedStudents.push(sDoc.id);
+                   await updateDoc(doc(db, "students", sDoc.id), {
+                      assignedMentorId: user.uid,
+                      matchingReason: ["subject", "availability (new mentor auto-sweep)"]
+                   });
+                }
+             }
+          } catch(err) {
+             console.error("Auto-assign sweep failed:", err);
+          }
+          // --------------------------------------------------------
+
           await setDoc(doc(db, "mentors", user.uid), {
              name,
              email,
-             subjects: mData.subjects || [],
-             assignedStudents: [],
+             subjects: mentorSubjects,
+             assignedStudents: newlyAssignedStudents,
              totalSessions: 0,
              completedSessions: 0,
              reportsSubmitted: 0,

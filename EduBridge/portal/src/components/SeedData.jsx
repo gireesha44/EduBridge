@@ -1,11 +1,69 @@
 import React, { useState } from 'react';
-import { collection, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Database, AlertCircle, CheckCircle } from 'lucide-react';
+import { Database, AlertCircle, CheckCircle, Trash2 } from 'lucide-react';
 
 const SeedData = () => {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState({ type: '', text: '' });
+
+  const clearSeedData = async () => {
+    setLoading(true);
+    setMsg({ type: '', text: '' });
+    try {
+      const q = query(collection(db, "users"), where("isSeeded", "==", true));
+      const seededSnap = await getDocs(q);
+      
+      let count = 0;
+      const seededIdsList = seededSnap.docs.map(d => d.id);
+
+      for (const docSnap of seededSnap.docs) {
+          const uId = docSnap.id;
+          const uData = docSnap.data();
+          
+          await deleteDoc(doc(db, "users", uId));
+          if (uData.role === 'Student') {
+             await deleteDoc(doc(db, "students", uId));
+             await deleteDoc(doc(db, "leaderboard", uId));
+             
+             const sSess = await getDocs(query(collection(db, "sessions"), where("student_id", "==", uId)));
+             sSess.forEach(async d => await deleteDoc(d.ref));
+             
+             const sAsg = await getDocs(query(collection(db, "assignments"), where("studentId", "==", uId)));
+             sAsg.forEach(async d => await deleteDoc(d.ref));
+             
+             const sLog = await getDocs(query(collection(db, "dailyLogs"), where("studentId", "==", uId)));
+             sLog.forEach(async d => await deleteDoc(d.ref));
+
+          } else if (uData.role === 'Mentor') {
+             await deleteDoc(doc(db, "mentors", uId));
+             
+             const mSess = await getDocs(query(collection(db, "sessions"), where("mentor_id", "==", uId)));
+             mSess.forEach(async d => await deleteDoc(d.ref));
+          } else if (uData.role === 'NGO') {
+             await deleteDoc(doc(db, "ngos", uId));
+          }
+          count++;
+      }
+      
+      const allMentorsSnap = await getDocs(collection(db, "mentors"));
+      for(const mDoc of allMentorsSnap.docs) {
+          const mData = mDoc.data();
+          if (mData.assignedStudents && Array.isArray(mData.assignedStudents)) {
+              const cleanedList = mData.assignedStudents.filter(id => !seededIdsList.includes(id));
+              if (cleanedList.length !== mData.assignedStudents.length) {
+                  await updateDoc(doc(db, "mentors", mDoc.id), { assignedStudents: cleanedList });
+              }
+          }
+      }
+
+      setMsg({ type: 'success', text: `Cleaned ${count} demo accounts & unlinked remaining!` });
+    } catch (err) {
+      console.error(err);
+      setMsg({ type: 'error', text: 'Error cleaning seeded data: ' + err.message });
+    }
+    setLoading(false);
+  };
 
   const seedDatabase = async () => {
     setLoading(true);
@@ -193,13 +251,17 @@ const SeedData = () => {
   };
 
   return (
-    <div style={{ marginTop: '1rem' }}>
-      <button onClick={seedDatabase} className="btn" style={{ background: '#FEE2E2', color: '#991B1B', width: '100%', display: 'flex', justifyContent: 'center', gap: '0.5rem', border: '1px solid #FCA5A5' }} disabled={loading}>
+    <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      <button onClick={seedDatabase} className="btn" style={{ background: '#F0F9FF', color: '#0284C7', width: '100%', display: 'flex', justifyContent: 'center', gap: '0.5rem', border: '1px solid #BAE6FD' }} disabled={loading}>
         <Database size={16} />
-        {loading ? 'Seeding Data...' : 'Seed Demo Data'}
+        {loading ? 'Processing...' : 'Seed Demo Data'}
+      </button>
+      <button onClick={clearSeedData} className="btn" style={{ background: '#FEF2F2', color: '#B91C1C', width: '100%', display: 'flex', justifyContent: 'center', gap: '0.5rem', border: '1px solid #FECACA' }} disabled={loading}>
+        <Trash2 size={16} />
+        {loading ? 'Cleaning...' : 'Clear Demo Data'}
       </button>
       {msg.text && (
-        <div style={{ marginTop: '0.5rem', padding: '0.5rem', fontSize: '0.85rem', color: msg.type === 'error' ? 'red' : msg.type === 'warning' ? '#B45309' : '#059669', background: msg.type === 'error' ? '#FEE2E2' : msg.type === 'warning' ? '#FEF3C7' : '#D1FAE5', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+        <div style={{ padding: '0.5rem', fontSize: '0.85rem', color: msg.type === 'error' ? 'red' : msg.type === 'warning' ? '#B45309' : '#059669', background: msg.type === 'error' ? '#FEE2E2' : msg.type === 'warning' ? '#FEF3C7' : '#D1FAE5', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
           {msg.type === 'success' ? <CheckCircle size={14}/> : <AlertCircle size={14}/>} {msg.text}
         </div>
       )}

@@ -27,9 +27,11 @@ const Signup = () => {
         const subjectSet = new Set();
         snap.docs.forEach(doc => {
           const mData = doc.data();
-          if (mData.expertise) {
-             mData.expertise.forEach(sub => subjectSet.add(sub));
-          }
+          const subs = mData.subjects || mData.expertise || [];
+          subs.forEach(sub => {
+             const cleanSub = typeof sub === 'string' ? sub.trim() : sub;
+             if (cleanSub) subjectSet.add(cleanSub);
+          });
         });
         setAvailableSubjects(Array.from(subjectSet).sort());
       } catch (err) {
